@@ -1,10 +1,10 @@
 "use client";
-// src/app/employee/leave/page.tsx (also used as template for admin leave)
-// Full client component for employee leave management
+// src/app/employee/leave/page.tsx
+// Upgraded Employee Leave Page with Allocation Counter Cards & Attachment URL (Excalidraw Reference)
 
 import { useState, useEffect } from "react";
 import { Topbar } from "@/components/layout/topbar";
-import { CalendarOff, Plus, X, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { CalendarOff, Plus, X, Loader2, CheckCircle, XCircle, Clock, Paperclip, AlertCircle, Info } from "lucide-react";
 import { formatDate, getDaysBetween } from "@/lib/utils";
 
 export default function EmployeeLeavePage() {
@@ -22,6 +22,7 @@ export default function EmployeeLeavePage() {
     startDate: "",
     endDate: "",
     remarks: "",
+    attachmentUrl: "",
   });
 
   const fetchData = async () => {
@@ -38,7 +39,7 @@ export default function EmployeeLeavePage() {
       setLeaveTypes(typesData.leaveTypes || []);
       setLeaves(leavesData.leaveRequests || []);
     } catch {
-      setError("Failed to load data");
+      setError("Failed to load leave data");
     } finally {
       setLoading(false);
     }
@@ -72,7 +73,7 @@ export default function EmployeeLeavePage() {
       if (!res.ok) { setError(data.error); return; }
       setSuccess("Leave request submitted successfully!");
       setShowForm(false);
-      setForm({ leaveTypeId: "", startDate: "", endDate: "", remarks: "" });
+      setForm({ leaveTypeId: "", startDate: "", endDate: "", remarks: "", attachmentUrl: "" });
       fetchData();
     } catch {
       setError("Failed to submit request");
@@ -87,16 +88,81 @@ export default function EmployeeLeavePage() {
     return <Clock size={14} color="rgb(var(--warning))" />;
   };
 
-  const filteredLeaves = filter === "ALL" ? leaves : leaves.filter((l) => l.status === filter);
+  // Calculate allocation counters
+  const approvedLeaves = leaves.filter((l) => l.status === "APPROVED");
+  const paidUsed = approvedLeaves
+    .filter((l) => (l.leaveType as Record<string, unknown>)?.type === "PAID")
+    .reduce((acc, l) => acc + getDaysBetween(new Date(String(l.startDate)), new Date(String(l.endDate))), 0);
 
+  const sickUsed = approvedLeaves
+    .filter((l) => (l.leaveType as Record<string, unknown>)?.type === "SICK")
+    .reduce((acc, l) => acc + getDaysBetween(new Date(String(l.startDate)), new Date(String(l.endDate))), 0);
+
+  const paidAllowed = 20; // Default 20 days paid leave
+  const sickAllowed = 10; // Default 10 days sick leave
+
+  const filteredLeaves = filter === "ALL" ? leaves : leaves.filter((l) => l.status === filter);
   const today = new Date().toISOString().split("T")[0];
 
   return (
     <div>
-      <Topbar title="Leave Requests" subtitle="Manage your time off" />
+      <Topbar title="Time Off Management" subtitle="View allocation balances and submit requests" />
       <div className="page-body">
-        {/* Header actions */}
-        <div className="leave-header animate-fade-in">
+        {/* ── TIME OFF ALLOCATION CARDS (Excalidraw Requirement) ── */}
+        <div className="allocation-cards-row animate-fade-in">
+          <div className="card allocation-card">
+            <div className="allocation-header">
+              <span className="alloc-title">Paid Time Off (PTO)</span>
+              <span className="badge badge-present">Annual</span>
+            </div>
+            <div className="alloc-numbers">
+              <span className="alloc-remaining">{Math.max(0, paidAllowed - paidUsed)}</span>
+              <span className="alloc-total">/ {paidAllowed} days left</span>
+            </div>
+            <div className="alloc-progress-bar">
+              <div
+                className="alloc-progress-fill"
+                style={{ width: `${Math.min(100, (paidUsed / paidAllowed) * 100)}%` }}
+              />
+            </div>
+            <span className="alloc-used-text">{paidUsed} days used this year</span>
+          </div>
+
+          <div className="card allocation-card">
+            <div className="allocation-header">
+              <span className="alloc-title">Sick Leave</span>
+              <span className="badge badge-info">Medical</span>
+            </div>
+            <div className="alloc-numbers">
+              <span className="alloc-remaining">{Math.max(0, sickAllowed - sickUsed)}</span>
+              <span className="alloc-total">/ {sickAllowed} days left</span>
+            </div>
+            <div className="alloc-progress-bar">
+              <div
+                className="alloc-progress-fill sick-fill"
+                style={{ width: `${Math.min(100, (sickUsed / sickAllowed) * 100)}%` }}
+              />
+            </div>
+            <span className="alloc-used-text">{sickUsed} days used this year</span>
+          </div>
+
+          <div className="card allocation-card request-cta-card">
+            <div className="cta-content">
+              <h3>Need Time Off?</h3>
+              <p>Submit your request for team review and approval.</p>
+              <button
+                className="btn btn-primary"
+                onClick={() => { setShowForm(true); setError(""); setSuccess(""); }}
+                id="new-leave-btn"
+              >
+                <Plus size={16} /> New Leave Request
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters + List Header */}
+        <div className="leave-header animate-fade-in" style={{ marginTop: "1.5rem" }}>
           <div className="filter-tabs">
             {["ALL", "PENDING", "APPROVED", "REJECTED"].map((s) => (
               <button
@@ -104,20 +170,13 @@ export default function EmployeeLeavePage() {
                 className={`filter-tab ${filter === s ? "active" : ""}`}
                 onClick={() => setFilter(s)}
               >
-                {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}
+                {s === "ALL" ? "All Requests" : s.charAt(0) + s.slice(1).toLowerCase()}
               </button>
             ))}
           </div>
-          <button
-            className="btn btn-primary"
-            onClick={() => { setShowForm(true); setError(""); setSuccess(""); }}
-            id="new-leave-btn"
-          >
-            <Plus size={16} /> New Request
-          </button>
         </div>
 
-        {/* Feedback */}
+        {/* Alerts */}
         {success && (
           <div className="alert alert-success animate-fade-in">
             <CheckCircle size={16} /> {success}
@@ -127,7 +186,7 @@ export default function EmployeeLeavePage() {
           <div className="alert alert-error animate-fade-in">⚠️ {error}</div>
         )}
 
-        {/* Leave Form Modal */}
+        {/* Leave Request Form Modal */}
         {showForm && (
           <div className="modal-overlay" onClick={() => setShowForm(false)}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -191,14 +250,25 @@ export default function EmployeeLeavePage() {
                 )}
 
                 <div className="form-group">
-                  <label className="label">Remarks (optional)</label>
+                  <label className="label">Remarks / Reason</label>
                   <textarea
                     className="input"
                     rows={3}
-                    placeholder="Provide any additional context..."
+                    placeholder="Describe your reason for time off..."
                     value={form.remarks}
                     onChange={(e) => setForm((p) => ({ ...p, remarks: e.target.value }))}
                     style={{ resize: "vertical" }}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Attachment URL (Optional / Medical Certificate)</label>
+                  <input
+                    type="url"
+                    className="input"
+                    placeholder="https://..."
+                    value={form.attachmentUrl}
+                    onChange={(e) => setForm((p) => ({ ...p, attachmentUrl: e.target.value }))}
                   />
                 </div>
 
@@ -224,14 +294,9 @@ export default function EmployeeLeavePage() {
           <div className="empty-state card" style={{ marginTop: "1rem" }}>
             <CalendarOff size={36} opacity={0.3} />
             <p style={{ fontWeight: 600 }}>No leave requests found</p>
-            <p style={{ fontSize: "0.85rem" }}>
-              {filter === "ALL" ? "Submit your first leave request" : `No ${filter.toLowerCase()} requests`}
+            <p style={{ fontSize: "0.85rem", color: "rgb(var(--text-muted))" }}>
+              {filter === "ALL" ? "Submit your first time-off request above." : `No ${filter.toLowerCase()} leave requests.`}
             </p>
-            {filter === "ALL" && (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
-                <Plus size={14} /> New Request
-              </button>
-            )}
           </div>
         ) : (
           <div className="leave-cards animate-fade-in">
@@ -257,18 +322,27 @@ export default function EmployeeLeavePage() {
                     </div>
                   </div>
 
-                  {leave.remarks && (
+                  {Boolean(leave.remarks) && (
                     <p className="leave-card-remarks">💬 {String(leave.remarks)}</p>
                   )}
 
-                  {leave.reviewNote && (
+                  {Boolean(leave.attachmentUrl) && (
+                    <div className="leave-attachment-link">
+                      <Paperclip size={12} />
+                      <a href={String(leave.attachmentUrl)} target="_blank" rel="noopener noreferrer">
+                        Medical Certificate / Attachment
+                      </a>
+                    </div>
+                  )}
+
+                  {Boolean(leave.reviewNote) && (
                     <div className="leave-review-note">
                       <strong>{reviewerEmp ? `${reviewerEmp.firstName} ${reviewerEmp.lastName}` : "HR"}:</strong>{" "}
                       {String(leave.reviewNote)}
                     </div>
                   )}
 
-                  <p className="leave-card-date">Submitted {formatDate(String(leave.createdAt))}</p>
+                  <p className="leave-card-date">Submitted on {formatDate(String(leave.createdAt))}</p>
                 </div>
               );
             })}
@@ -276,13 +350,100 @@ export default function EmployeeLeavePage() {
         )}
 
         <style jsx>{`
+          .allocation-cards-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+          }
+
+          .allocation-card {
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.625rem;
+          }
+
+          .allocation-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+
+          .alloc-title {
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: rgb(var(--text-primary));
+          }
+
+          .alloc-numbers {
+            display: flex;
+            align-items: baseline;
+            gap: 0.375rem;
+          }
+
+          .alloc-remaining {
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: rgb(var(--text-primary));
+          }
+
+          .alloc-total {
+            font-size: 0.8rem;
+            color: rgb(var(--text-muted));
+          }
+
+          .alloc-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgb(var(--bg-secondary));
+            border-radius: var(--radius-full);
+            overflow: hidden;
+          }
+
+          .alloc-progress-fill {
+            height: 100%;
+            background: rgb(var(--success));
+            border-radius: var(--radius-full);
+            transition: width 0.3s ease;
+          }
+
+          .sick-fill {
+            background: rgb(var(--info));
+          }
+
+          .alloc-used-text {
+            font-size: 0.72rem;
+            color: rgb(var(--text-muted));
+          }
+
+          .request-cta-card {
+            background: linear-gradient(135deg, rgb(var(--accent)), rgb(79 70 229 / 0.85));
+            color: white;
+            border: none;
+          }
+
+          .cta-content {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: flex-start;
+          }
+
+          .cta-content h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: white;
+          }
+
+          .cta-content p {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.8);
+          }
+
           .leave-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
-            gap: 0.75rem;
           }
 
           .filter-tabs {
@@ -316,7 +477,7 @@ export default function EmployeeLeavePage() {
             padding: 0.75rem 1rem;
             border-radius: var(--radius-sm);
             font-size: 0.875rem;
-            margin-bottom: 1rem;
+            margin-top: 1rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -454,6 +615,18 @@ export default function EmployeeLeavePage() {
             border-left: 3px solid rgb(var(--border));
           }
 
+          .leave-attachment-link {
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+          }
+
+          .leave-attachment-link a {
+            color: rgb(var(--accent));
+            text-decoration: underline;
+          }
+
           .leave-review-note {
             font-size: 0.78rem;
             color: rgb(var(--text-secondary));
@@ -466,6 +639,10 @@ export default function EmployeeLeavePage() {
           .leave-card-date {
             font-size: 0.72rem;
             color: rgb(var(--text-muted));
+          }
+
+          @media (max-width: 768px) {
+            .allocation-cards-row { grid-template-columns: 1fr; }
           }
         `}</style>
       </div>

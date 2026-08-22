@@ -107,7 +107,7 @@ export default function AdminLeavePage() {
                         {formatDate(String(leave.startDate))} → {formatDate(String(leave.endDate))}
                         <strong> ({days} day{days > 1 ? "s" : ""})</strong>
                       </span>
-                      {leave.remarks && <span className="leave-remarks">💬 {String(leave.remarks)}</span>}
+                      {Boolean(leave.remarks) && <span className="leave-remarks">💬 {String(leave.remarks)}</span>}
                     </div>
 
                     {/* Status / Actions */}
@@ -187,7 +187,7 @@ export default function AdminLeavePage() {
                   )}
 
                   {/* Existing review note */}
-                  {!isPending && leave.reviewNote && (
+                  {Boolean(!isPending && leave.reviewNote) && (
                     <div className="existing-note">
                       <strong>{reviewerEmp ? `${reviewerEmp.firstName} ${reviewerEmp.lastName}` : "HR"}:</strong>{" "}
                       {String(leave.reviewNote)}

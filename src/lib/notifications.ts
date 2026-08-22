@@ -24,7 +24,7 @@ export async function createNotification(
         type: params.type,
         title: params.title,
         message: params.message,
-        metadata: params.metadata,
+        metadata: params.metadata ? JSON.parse(JSON.stringify(params.metadata)) : undefined,
       },
     });
   } catch (error) {

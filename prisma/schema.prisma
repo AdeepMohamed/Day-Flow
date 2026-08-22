@@ -71,6 +71,7 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   employee         Employee?
+  sessions         Session[]
   sentNotifs       Notification[] @relation("NotifSender")
   receivedNotifs   Notification[] @relation("NotifReceiver")
   auditLogs        AuditLog[]
@@ -79,6 +80,16 @@ model User {
 
   @@index([email])
   @@index([employeeId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Employee {
@@ -92,12 +103,31 @@ model Employee {
   dateOfBirth    DateTime?
   gender         String?
 
-  // Employment Info
+  // Employment & Organization Info
   department     String?
   position       String?
   startDate      DateTime?
+  dateOfJoining  DateTime?
+  company        String?   @default("Dayflow Corp")
+  location       String?   @default("Headquarters")
   employmentType String?   // Full-time | Part-time | Contract
   managerId      String?
+
+  // Personal Info (Excalidraw)
+  nationality    String?
+  maritalStatus  String?
+  personalEmail  String?
+
+  // Financial & Government IDs (Excalidraw)
+  bankName       String?
+  bankAccountNo  String?
+  ifscCode       String?
+  panNumber      String?
+  uanNumber      String?
+
+  // Skills & Certifications (Excalidraw)
+  skills         String[]  @default([])
+  certifications Json?     // [{ name, issuer, year }]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -151,6 +181,7 @@ model LeaveRequest {
   startDate   DateTime    @db.Date
   endDate     DateTime    @db.Date
   remarks     String?
+  attachmentUrl String?
   status      LeaveStatus @default(PENDING)
   reviewedById String?
   reviewedAt  DateTime?
@@ -172,6 +203,22 @@ model SalaryStructure {
   baseSalary    Decimal  @db.Decimal(12, 2)
   allowances    Decimal  @db.Decimal(12, 2) @default(0)
   deductions    Decimal  @db.Decimal(12, 2) @default(0)
+
+  // Dynamic Salary Components (Excalidraw)
+  monthlyWage        Decimal? @db.Decimal(12, 2)
+  yearlyWage         Decimal? @db.Decimal(12, 2)
+  basicSalary        Decimal? @db.Decimal(12, 2)
+  hra                Decimal? @db.Decimal(12, 2)
+  standardAllowance  Decimal? @db.Decimal(12, 2)
+  performanceBonus   Decimal? @db.Decimal(12, 2)
+  lta                Decimal? @db.Decimal(12, 2)
+  fixedAllowance     Decimal? @db.Decimal(12, 2)
+  pfEmployee         Decimal? @db.Decimal(12, 2)
+  pfEmployer         Decimal? @db.Decimal(12, 2)
+  professionalTax    Decimal? @db.Decimal(12, 2)
+  workingDaysPerWeek Int?     @default(5)
+  breakTimeMinutes   Int?     @default(60)
+
   currency      String   @default("USD")
   effectiveFrom DateTime
   updatedById   String?

@@ -38,28 +38,56 @@ export async function PATCH(
       where: { employeeId },
     });
 
-    const { baseSalary, allowances, deductions, currency, effectiveFrom } =
-      result.data;
+    const {
+      baseSalary,
+      allowances,
+      deductions,
+      monthlyWage,
+      yearlyWage,
+      basicSalary,
+      hra,
+      standardAllowance,
+      performanceBonus,
+      lta,
+      fixedAllowance,
+      pfEmployee,
+      pfEmployer,
+      professionalTax,
+      workingDaysPerWeek,
+      breakTimeMinutes,
+      currency,
+      effectiveFrom,
+    } = result.data;
     const netPay = baseSalary + allowances - deductions;
+
+    const salaryData = {
+      baseSalary,
+      allowances,
+      deductions,
+      monthlyWage,
+      yearlyWage,
+      basicSalary,
+      hra,
+      standardAllowance,
+      performanceBonus,
+      lta,
+      fixedAllowance,
+      pfEmployee,
+      pfEmployer,
+      professionalTax,
+      workingDaysPerWeek: workingDaysPerWeek ?? 5,
+      breakTimeMinutes: breakTimeMinutes ?? 60,
+      currency,
+      effectiveFrom: new Date(effectiveFrom),
+      updatedById: session.id,
+    };
 
     const salary = await db.salaryStructure.upsert({
       where: { employeeId },
-      update: {
-        baseSalary,
-        allowances,
-        deductions,
-        currency,
-        effectiveFrom: new Date(effectiveFrom),
-        updatedById: session.id,
-      },
+      update: salaryData,
       create: {
         employeeId,
-        baseSalary,
-        allowances,
-        deductions,
-        currency,
-        effectiveFrom: new Date(effectiveFrom),
-        updatedById: session.id,
+        ...salaryData,
       },
     });
 

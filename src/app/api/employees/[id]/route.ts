@@ -108,6 +108,9 @@ export async function PATCH(
     if (updateData.startDate) {
       updateData.startDate = new Date(updateData.startDate as string);
     }
+    if (updateData.dateOfJoining) {
+      updateData.dateOfJoining = new Date(updateData.dateOfJoining as string);
+    }
 
     const updated = await db.employee.update({
       where: { id },

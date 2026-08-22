@@ -3,24 +3,20 @@
 
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import { neon } from "@neondatabase/serverless";
+import { Pool } from "@neondatabase/serverless";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
 function createPrismaClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL;
+  const connectionString =
+    process.env.DATABASE_URL ||
+    "postgresql://placeholder:placeholder@localhost:5432/placeholder";
 
-  if (!connectionString) {
-    console.warn("[PeopleOS] DATABASE_URL not set — using basic Prisma client");
-    return new PrismaClient({
-      log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-    });
-  }
-
-  const sql = neon(connectionString);
-  const adapter = new PrismaNeon(sql);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pool = new Pool({ connectionString }) as any;
+  const adapter = new PrismaNeon(pool);
 
   return new PrismaClient({
     adapter,

@@ -34,6 +34,8 @@ export const employeeEditSelfSchema = z.object({
   phone: z.string().max(20).optional().nullable(),
   address: z.string().max(200).optional().nullable(),
   profilePicture: z.string().url().optional().nullable(),
+  personalEmail: z.string().email().optional().nullable(),
+  skills: z.array(z.string()).optional(),
 });
 
 export const employeeEditAdminSchema = z.object({
@@ -47,8 +49,24 @@ export const employeeEditAdminSchema = z.object({
   department: z.string().max(100).optional().nullable(),
   position: z.string().max(100).optional().nullable(),
   startDate: z.string().optional().nullable(),
+  dateOfJoining: z.string().optional().nullable(),
+  company: z.string().max(100).optional().nullable(),
+  location: z.string().max(100).optional().nullable(),
   employmentType: z.string().max(50).optional().nullable(),
   managerId: z.string().optional().nullable(),
+  // Personal (Excalidraw)
+  nationality: z.string().max(50).optional().nullable(),
+  maritalStatus: z.string().max(50).optional().nullable(),
+  personalEmail: z.string().email().optional().nullable(),
+  // Bank & Govt IDs (Excalidraw)
+  bankName: z.string().max(100).optional().nullable(),
+  bankAccountNo: z.string().max(50).optional().nullable(),
+  ifscCode: z.string().max(20).optional().nullable(),
+  panNumber: z.string().max(20).optional().nullable(),
+  uanNumber: z.string().max(20).optional().nullable(),
+  // Skills & Certifications
+  skills: z.array(z.string()).optional(),
+  certifications: z.any().optional(),
 });
 
 // ─── Attendance ───────────────────────────────────────────────────────────────
@@ -99,6 +117,19 @@ export const salaryUpdateSchema = z.object({
     .max(10_000_000, "Salary too large"),
   allowances: z.number().min(0).max(10_000_000).default(0),
   deductions: z.number().min(0).max(10_000_000).default(0),
+  monthlyWage: z.number().min(0).optional().nullable(),
+  yearlyWage: z.number().min(0).optional().nullable(),
+  basicSalary: z.number().min(0).optional().nullable(),
+  hra: z.number().min(0).optional().nullable(),
+  standardAllowance: z.number().min(0).optional().nullable(),
+  performanceBonus: z.number().min(0).optional().nullable(),
+  lta: z.number().min(0).optional().nullable(),
+  fixedAllowance: z.number().min(0).optional().nullable(),
+  pfEmployee: z.number().min(0).optional().nullable(),
+  pfEmployer: z.number().min(0).optional().nullable(),
+  professionalTax: z.number().min(0).optional().nullable(),
+  workingDaysPerWeek: z.number().min(1).max(7).optional().nullable(),
+  breakTimeMinutes: z.number().min(0).max(480).optional().nullable(),
   currency: z.string().length(3).default("USD"),
   effectiveFrom: z.string().min(1, "Effective date is required"),
 });
