@@ -9,18 +9,45 @@ export const metadata = { title: "My Profile" };
 
 export default async function EmployeeProfilePage() {
   const session = await getSession();
-  if (!session || !session.employeeProfileId) redirect("/auth/login");
+  if (!session) redirect("/auth/login");
 
-  const employee = await db.employee.findUnique({
-    where: { id: session.employeeProfileId },
-    include: {
-      user: { select: { email: true, employeeId: true, role: true, createdAt: true } },
-      manager: { select: { firstName: true, lastName: true } },
-      documents: true,
-    },
-  });
+  let employee = session.employeeProfileId
+    ? await db.employee.findUnique({
+        where: { id: session.employeeProfileId },
+        include: {
+          user: { select: { email: true, employeeId: true, role: true, createdAt: true } },
+          manager: { select: { firstName: true, lastName: true } },
+          documents: true,
+          salary: true,
+        },
+      })
+    : await db.employee.findUnique({
+        where: { userId: session.id },
+        include: {
+          user: { select: { email: true, employeeId: true, role: true, createdAt: true } },
+          manager: { select: { firstName: true, lastName: true } },
+          documents: true,
+          salary: true,
+        },
+      });
 
-  if (!employee) redirect("/auth/login");
+  if (!employee) {
+    employee = await db.employee.create({
+      data: {
+        userId: session.id,
+        firstName: session.email.split("@")[0],
+        lastName: "User",
+        department: "General",
+        position: "Employee",
+      },
+      include: {
+        user: { select: { email: true, employeeId: true, role: true, createdAt: true } },
+        manager: { select: { firstName: true, lastName: true } },
+        documents: true,
+        salary: true,
+      },
+    });
+  }
 
   return (
     <div>

@@ -9,7 +9,27 @@ export const metadata = { title: "My Attendance" };
 
 export default async function EmployeeAttendancePage() {
   const session = await getSession();
-  if (!session || !session.employeeProfileId) redirect("/auth/login");
+  if (!session) redirect("/auth/login");
+
+  let empProfileId = session.employeeProfileId;
+
+  if (!empProfileId) {
+    const emp = await db.employee.findUnique({ where: { userId: session.id } });
+    if (emp) {
+      empProfileId = emp.id;
+    } else {
+      const newEmp = await db.employee.create({
+        data: {
+          userId: session.id,
+          firstName: session.email.split("@")[0],
+          lastName: "User",
+          department: "General",
+          position: "Employee",
+        },
+      });
+      empProfileId = newEmp.id;
+    }
+  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -22,14 +42,14 @@ export default async function EmployeeAttendancePage() {
 
   const [todayAttendance, weekAttendance, monthAttendance] = await Promise.all([
     db.attendance.findUnique({
-      where: { employeeId_date: { employeeId: session.employeeProfileId, date: today } },
+      where: { employeeId_date: { employeeId: empProfileId, date: today } },
     }),
     db.attendance.findMany({
-      where: { employeeId: session.employeeProfileId, date: { gte: sevenDaysAgo } },
+      where: { employeeId: empProfileId, date: { gte: sevenDaysAgo } },
       orderBy: { date: "asc" },
     }),
     db.attendance.findMany({
-      where: { employeeId: session.employeeProfileId, date: { gte: thirtyDaysAgo } },
+      where: { employeeId: empProfileId, date: { gte: thirtyDaysAgo } },
       orderBy: { date: "desc" },
     }),
   ]);

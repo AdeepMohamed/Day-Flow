@@ -9,23 +9,43 @@ export const metadata = { title: "My Payroll" };
 
 export default async function EmployeePayrollPage() {
   const session = await getSession();
-  if (!session || !session.employeeProfileId) redirect("/auth/login");
+  if (!session) redirect("/auth/login");
+
+  let empProfileId = session.employeeProfileId;
+
+  if (!empProfileId) {
+    const emp = await db.employee.findUnique({ where: { userId: session.id } });
+    if (emp) {
+      empProfileId = emp.id;
+    } else {
+      const newEmp = await db.employee.create({
+        data: {
+          userId: session.id,
+          firstName: session.email.split("@")[0],
+          lastName: "User",
+          department: "General",
+          position: "Employee",
+        },
+      });
+      empProfileId = newEmp.id;
+    }
+  }
 
   const salary = await db.salaryStructure.findUnique({
-    where: { employeeId: session.employeeProfileId },
+    where: { employeeId: empProfileId },
     include: {
       updatedBy: { select: { employee: { select: { firstName: true, lastName: true } } } },
     },
   });
 
   const payrollHistory = await db.payrollRecord.findMany({
-    where: { employeeId: session.employeeProfileId },
+    where: { employeeId: empProfileId },
     orderBy: [{ year: "desc" }, { month: "desc" }],
     take: 12,
   });
 
   const employee = await db.employee.findUnique({
-    where: { id: session.employeeProfileId },
+    where: { id: empProfileId },
     select: { firstName: true, lastName: true, position: true, department: true },
   });
 

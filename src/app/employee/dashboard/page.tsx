@@ -10,7 +10,27 @@ export const metadata = { title: "My Dashboard" };
 
 export default async function EmployeeDashboardPage() {
   const session = await getSession();
-  if (!session || !session.employeeProfileId) redirect("/auth/login");
+  if (!session) redirect("/auth/login");
+
+  if (session.role === "ADMIN" || session.role === "HR") {
+    redirect("/admin/dashboard");
+  }
+
+  let empProfileId = session.employeeProfileId;
+
+  if (!empProfileId) {
+    // Auto-create missing employee profile for standard users
+    const newEmp = await db.employee.create({
+      data: {
+        userId: session.id,
+        firstName: session.email.split("@")[0],
+        lastName: "User",
+        department: "General",
+        position: "Employee",
+      },
+    });
+    empProfileId = newEmp.id;
+  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -21,26 +41,26 @@ export default async function EmployeeDashboardPage() {
   const [employee, todayAttendance, weekAttendance, recentLeaves, unreadNotifs] =
     await Promise.all([
       db.employee.findUnique({
-        where: { id: session.employeeProfileId },
+        where: { id: empProfileId },
         include: { salary: true },
       }),
       db.attendance.findUnique({
         where: {
           employeeId_date: {
-            employeeId: session.employeeProfileId,
+            employeeId: empProfileId,
             date: today,
           },
         },
       }),
       db.attendance.findMany({
         where: {
-          employeeId: session.employeeProfileId,
+          employeeId: empProfileId,
           date: { gte: sevenDaysAgo, lte: today },
         },
         orderBy: { date: "asc" },
       }),
       db.leaveRequest.findMany({
-        where: { employeeId: session.employeeProfileId },
+        where: { employeeId: empProfileId },
         include: { leaveType: true },
         orderBy: { createdAt: "desc" },
         take: 3,
