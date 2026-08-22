@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { withDbRetry } from "@/lib/db-retry";
 import { loginSchema } from "@/lib/validations";
-import { createSession } from "@/lib/auth";
+import { createSessionToken } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = result.data;
 
+    // Single DB lookup (with retry for Neon cold-starts)
     const user = await withDbRetry(() =>
       db.user.findUnique({
         where: { email },
@@ -53,9 +54,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const sessionToken = await createSession(user.id);
+    // 0ms HMAC Token Generation (no database write/lookup latency!)
+    const sessionToken = createSessionToken({
+      id: user.id,
+      employeeId: user.employeeId,
+      email: user.email,
+      role: user.role,
+      emailVerified: user.emailVerified,
+      employeeProfileId: user.employee?.id ?? null,
+    });
 
-    // Run audit logging asynchronously in background so response returns instantly
+    // Asynchronous background audit logging (non-blocking)
     logAudit({
       userId: user.id,
       action: "LOGIN",

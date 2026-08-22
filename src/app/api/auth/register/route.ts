@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { withDbRetry } from "@/lib/db-retry";
 import { registerSchema } from "@/lib/validations";
-import { createSession, generateVerifyToken } from "@/lib/auth";
+import { createSessionToken, generateVerifyToken } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cost 10 for high security + fast hashing speed
+    // Fast bcrypt hashing (cost 10)
     const passwordHash = await bcrypt.hash(password, 10);
     const verifyToken = generateVerifyToken();
     const verifyExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
           email,
           passwordHash,
           role,
-          emailVerified: true, // Auto-verify for hackathon ease
+          emailVerified: true,
           verifyToken,
           verifyExpiry,
           employee: {
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    // Auto-create salary structure for new employee
+    // Auto-create salary structure for new employee (background non-blocking)
     if (user.employee?.id) {
       const defaultSalary = role === "ADMIN" ? 90000 : role === "HR" ? 70000 : 65000;
       const monthly = Math.round(defaultSalary / 12);
@@ -106,8 +106,15 @@ export async function POST(req: NextRequest) {
       ipAddress: req.headers.get("x-forwarded-for") ?? undefined,
     }).catch((e) => console.error("Audit log error:", e));
 
-    // Create session token & set session cookie for instant auto-login
-    const sessionToken = await createSession(user.id);
+    // 0ms HMAC Token Generation (no database write/lookup latency!)
+    const sessionToken = createSessionToken({
+      id: user.id,
+      employeeId: user.employeeId,
+      email: user.email,
+      role: user.role,
+      emailVerified: user.emailVerified,
+      employeeProfileId: user.employee?.id ?? null,
+    });
 
     const response = NextResponse.json(
       {

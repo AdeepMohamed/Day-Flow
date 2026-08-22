@@ -91,7 +91,7 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
 
     if (!sessionToken) return null;
 
-    // Fast path: verify HMAC token (0ms)
+    // Fast path: verify HMAC token in 0ms (no database lookup)
     const session = verifyToken(sessionToken);
     if (session) return session;
 
@@ -125,7 +125,7 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
 });
 
 /**
- * Require authentication — throws redirect if not logged in.
+ * Require authentication — throws error if not logged in.
  */
 export async function requireAuth(): Promise<SessionUser> {
   const session = await getSession();
@@ -159,7 +159,24 @@ export async function requireAdminOrHR(): Promise<SessionUser> {
 }
 
 /**
- * Create a session for a user and return signed HMAC token.
+ * Create a signed HMAC session token instantly from user object (0ms DB latency).
+ */
+export function createSessionToken(user: SessionUser): string {
+  const payload: SessionTokenPayload = {
+    id: user.id,
+    employeeId: user.employeeId,
+    email: user.email,
+    role: user.role,
+    emailVerified: user.emailVerified,
+    employeeProfileId: user.employeeProfileId,
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
+
+  return signToken(payload);
+}
+
+/**
+ * Legacy helper for backwards compatibility.
  */
 export async function createSession(userId: string): Promise<string> {
   const user = await db.user.findUnique({
@@ -171,30 +188,14 @@ export async function createSession(userId: string): Promise<string> {
     throw new Error("User not found");
   }
 
-  const payload: SessionTokenPayload = {
+  return createSessionToken({
     id: user.id,
     employeeId: user.employeeId,
     email: user.email,
     role: user.role,
     emailVerified: user.emailVerified,
     employeeProfileId: user.employee?.id ?? null,
-    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
-  };
-
-  const token = signToken(payload);
-
-  // Also persist in DB as fallback
-  await db.session
-    .create({
-      data: {
-        userId: user.id,
-        token,
-        expiresAt: new Date(payload.exp),
-      },
-    })
-    .catch(() => {});
-
-  return token;
+  });
 }
 
 /**
