@@ -1,58 +1,62 @@
 // src/lib/db.ts
-// Prisma v7 with Neon-optimized connection pool
+// Prisma v7 with self-healing connection pool for Neon serverless
 
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
-const globalForPrisma = globalThis as unknown as {
+const g = globalThis as unknown as {
   prisma: PrismaClient | undefined;
   pool: Pool | undefined;
 };
 
-function getOrCreatePool(): Pool {
-  if (globalForPrisma.pool) {
-    return globalForPrisma.pool;
-  }
-
+function createPool(): Pool {
   const connectionString =
     process.env.DATABASE_URL ||
     "postgresql://placeholder:placeholder@localhost:5432/placeholder";
 
   const pool = new Pool({
     connectionString,
-    max: 5,
-    min: 1,                          // keep at least 1 connection alive
-    idleTimeoutMillis: 60000,        // 60s — keep idle connections longer
-    connectionTimeoutMillis: 15000,  // 15s timeout — enough for Neon cold-start
-    keepAlive: true,                 // TCP keep-alive prevents silent drops
-    keepAliveInitialDelayMillis: 0,
+    max: 3,
+    min: 0,                          // Don't keep idle connections — Neon closes them anyway
+    idleTimeoutMillis: 10000,        // Release idle connections after 10s
+    connectionTimeoutMillis: 20000,  // 20s — enough for Neon cold-start
+    keepAlive: false,                // Disable TCP keepalive — Neon drops them regardless
   });
 
-  // Log pool errors silently — don't crash the app
   pool.on("error", (err) => {
-    console.error("[DB Pool] Unexpected error:", err.message);
+    console.error("[DB Pool] Client error, resetting pool:", err.message);
+    // On any pool error, clear cached instances so they get recreated fresh
+    try { pool.end().catch(() => {}); } catch (_) {}
+    g.pool = undefined;
+    g.prisma = undefined;
   });
 
-  globalForPrisma.pool = pool;
   return pool;
 }
 
-function createPrismaClient(): PrismaClient {
-  if (globalForPrisma.prisma) {
-    return globalForPrisma.prisma;
-  }
+function getDb(): PrismaClient {
+  // Always return cached client if healthy
+  if (g.prisma && g.pool) return g.prisma;
 
-  const pool = getOrCreatePool();
+  const pool = createPool();
+  g.pool = pool;
+
   const adapter = new PrismaPg(pool);
-
   const client = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-  globalForPrisma.prisma = client;
+  g.prisma = client;
   return client;
 }
 
-export const db = createPrismaClient();
+// Proxy that auto-recreates the client if the pool was reset
+export const db = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getDb();
+    const value = (client as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

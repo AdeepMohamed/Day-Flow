@@ -6,6 +6,24 @@ import { loginSchema } from "@/lib/validations";
 import { createSession } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
+// Retry on Neon cold-start connection errors
+async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      const isConnErr = msg.includes("timeout") || msg.includes("Connection terminated") || msg.includes("ECONNRESET");
+      if (i < retries && isConnErr) {
+        await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Retry limit exceeded");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -20,10 +38,12 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = result.data;
 
-    const user = await db.user.findUnique({
-      where: { email },
-      include: { employee: { select: { id: true } } },
-    });
+    const user = await withRetry(() =>
+      db.user.findUnique({
+        where: { email },
+        include: { employee: { select: { id: true } } },
+      })
+    );
 
     if (!user) {
       return NextResponse.json(
@@ -71,12 +91,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Set secure session cookie
     response.cookies.set("peopleos_session", sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: 7 * 24 * 60 * 60,
       path: "/",
     });
 

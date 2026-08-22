@@ -1,11 +1,13 @@
 // src/app/admin/analytics/page.tsx
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/topbar";
 import { AdminAnalyticsClient } from "./client";
 
 export const metadata = { title: "HR Analytics — Admin" };
+export const dynamic = "force-dynamic";
 
 export default async function AdminAnalyticsPage() {
   const session = await getSession();
@@ -13,7 +15,7 @@ export default async function AdminAnalyticsPage() {
     redirect("/auth/login");
   }
 
-  const [totalEmployees, departmentCounts, leaveStats, attendanceCount] = await Promise.all([
+  const [totalEmployees, departmentCounts, leaveStats, attendanceCount] = await withDbRetry(() => Promise.all([
     db.employee.count(),
     db.employee.groupBy({
       by: ["department"],
@@ -24,7 +26,7 @@ export default async function AdminAnalyticsPage() {
       _count: { id: true },
     }),
     db.attendance.count(),
-  ]);
+  ]));
 
   const departmentData = departmentCounts.map((d) => ({
     name: d.department || "Unassigned",

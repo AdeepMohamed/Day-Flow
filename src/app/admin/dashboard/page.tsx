@@ -1,11 +1,13 @@
 // src/app/admin/dashboard/page.tsx
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/topbar";
 import { AdminDashboardClient } from "./client";
 
 export const metadata = { title: "Admin Dashboard" };
+export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
   const session = await getSession();
@@ -25,7 +27,7 @@ export default async function AdminDashboardPage() {
     recentLeaveRequests,
     recentAuditLogs,
     attendanceTrend,
-  ] = await Promise.all([
+  ] = await withDbRetry(() => Promise.all([
     db.employee.count(),
     db.attendance.findMany({
       where: { date: today },
@@ -68,7 +70,7 @@ export default async function AdminDashboardPage() {
       },
       select: { date: true, status: true },
     }),
-  ]);
+  ]));
 
   const todayStats = {
     present: todayAttendance.filter((a) => a.status === "PRESENT").length,

@@ -1,23 +1,17 @@
 // src/components/theme-script.tsx
-// Inline script to prevent flash of wrong theme on page load
+// Prevents flash of wrong theme (FART) before React hydrates.
+// Uses next/script with strategy="beforeInteractive" to avoid React script tag warning.
+
+import Script from "next/script";
 
 export function ThemeScript() {
-  const script = `
-    (function() {
-      try {
-        var theme = localStorage.getItem('peopleos-theme');
-        if (!theme) {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-      } catch (e) {}
-    })();
-  `;
-
   return (
-    <script
-      dangerouslySetInnerHTML={{ __html: script }}
-      suppressHydrationWarning
+    <Script
+      id="theme-init"
+      strategy="beforeInteractive"
+      dangerouslySetInnerHTML={{
+        __html: `(function(){try{var t=localStorage.getItem('peopleos-theme')||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,
+      }}
     />
   );
 }

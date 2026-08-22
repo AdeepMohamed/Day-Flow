@@ -1,11 +1,13 @@
 // src/app/admin/attendance/page.tsx
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/topbar";
 import { AdminAttendanceClient } from "./client";
 
 export const metadata = { title: "Attendance Management — Admin" };
+export const dynamic = "force-dynamic";
 
 export default async function AdminAttendancePage() {
   const session = await getSession();
@@ -16,7 +18,7 @@ export default async function AdminAttendancePage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [employees, todayAttendance] = await Promise.all([
+  const [employees, todayAttendance] = await withDbRetry(() => Promise.all([
     db.employee.findMany({
       select: {
         id: true,
@@ -46,7 +48,7 @@ export default async function AdminAttendancePage() {
       },
       orderBy: { employee: { firstName: "asc" } },
     }),
-  ]);
+  ]));
 
   return (
     <div>

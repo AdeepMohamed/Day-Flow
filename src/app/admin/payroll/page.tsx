@@ -1,11 +1,13 @@
 // src/app/admin/payroll/page.tsx
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/topbar";
 import { AdminPayrollClient } from "./client";
 
 export const metadata = { title: "Payroll Management — Admin" };
+export const dynamic = "force-dynamic";
 
 export default async function AdminPayrollPage() {
   const session = await getSession();
@@ -13,7 +15,7 @@ export default async function AdminPayrollPage() {
     redirect("/auth/login");
   }
 
-  const [employees, salaryStructures] = await Promise.all([
+  const [employees, salaryStructures] = await withDbRetry(() => Promise.all([
     db.employee.findMany({
       include: {
         user: { select: { email: true, employeeId: true } },
@@ -35,7 +37,7 @@ export default async function AdminPayrollPage() {
       },
       orderBy: { createdAt: "desc" },
     }),
-  ]);
+  ]));
 
   return (
     <div>

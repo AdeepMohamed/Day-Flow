@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrHR } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
       rejectedLeaves,
       todayAttendance,
       recentAuditLogs,
-    ] = await Promise.all([
+    ] = await withDbRetry(() => Promise.all([
       db.employee.count(),
       db.attendance.findMany({
         where: { date: { gte: thirtyDaysAgo } },
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
           },
         },
       }),
-    ]);
+    ]));
 
     // Attendance breakdown
     const attendanceStats = {
