@@ -1,4 +1,6 @@
 // src/app/employee/attendance/page.tsx
+// Ultra-fast Attendance Page Server Component — Single Batched Database Query
+
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
@@ -13,8 +15,12 @@ export default async function EmployeeAttendancePage() {
 
   let empProfileId = session.employeeProfileId;
 
+  // If employeeProfileId is missing from token, resolve it fast
   if (!empProfileId) {
-    const emp = await db.employee.findUnique({ where: { userId: session.id } });
+    const emp = await db.employee.findUnique({
+      where: { userId: session.id },
+      select: { id: true },
+    });
     if (emp) {
       empProfileId = emp.id;
     } else {
@@ -26,33 +32,41 @@ export default async function EmployeeAttendancePage() {
           department: "General",
           position: "Employee",
         },
+        select: { id: true },
       });
       empProfileId = newEmp.id;
     }
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
 
-  const sevenDaysAgo = new Date(today);
-  sevenDaysAgo.setDate(today.getDate() - 6);
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(now.getDate() - 29);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
 
-  const thirtyDaysAgo = new Date(today);
-  thirtyDaysAgo.setDate(today.getDate() - 29);
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(now.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
 
-  const [todayAttendance, weekAttendance, monthAttendance] = await Promise.all([
-    db.attendance.findUnique({
-      where: { employeeId_date: { employeeId: empProfileId, date: today } },
-    }),
-    db.attendance.findMany({
-      where: { employeeId: empProfileId, date: { gte: sevenDaysAgo } },
-      orderBy: { date: "asc" },
-    }),
-    db.attendance.findMany({
-      where: { employeeId: empProfileId, date: { gte: thirtyDaysAgo } },
-      orderBy: { date: "desc" },
-    }),
-  ]);
+  // Single database query for all attendance records in the last 30 days
+  const monthAttendance = await db.attendance.findMany({
+    where: {
+      employeeId: empProfileId,
+      date: { gte: thirtyDaysAgo },
+    },
+    orderBy: { date: "asc" },
+  });
+
+  // Derive today's record and 7-day week records in memory (0ms overhead)
+  const todayAttendance =
+    monthAttendance.find(
+      (a) => new Date(a.date).toISOString().split("T")[0] === todayStr
+    ) || null;
+
+  const weekAttendance = monthAttendance.filter(
+    (a) => new Date(a.date) >= sevenDaysAgo
+  );
 
   const monthStats = {
     present: monthAttendance.filter((a) => a.status === "PRESENT").length,
