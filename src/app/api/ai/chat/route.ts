@@ -1,5 +1,5 @@
 // src/app/api/ai/chat/route.ts
-// Grok AI Help Assistant — server-side only, API key never exposed
+// AI Help Assistant — server-side only, supports Grok (xAI) and Groq API keys
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
@@ -78,22 +78,29 @@ export async function POST(req: NextRequest) {
 
     const { message, conversationHistory } = result.data;
 
-    // Minimal safe user context (NO salary, NO sensitive data)
+    // Minimal safe user context
     const userContext = `
 Current user context:
 - Role: ${session.role}
 - Verified: ${session.emailVerified}`;
 
     const apiKey = process.env.XAI_API_KEY;
-    const model = process.env.XAI_MODEL || "grok-3-mini";
 
     if (!apiKey) {
-      // Graceful degradation if no API key configured
       return NextResponse.json({
         response:
           "The AI assistant is not configured yet. Please contact your HR team for assistance.",
       });
     }
+
+    // Auto-detect endpoint & model based on key prefix (gsk_ = Groq, xai_ = xAI)
+    const isGroq = apiKey.startsWith("gsk_");
+    const endpoint = isGroq
+      ? "https://api.groq.com/openai/v1/chat/completions"
+      : "https://api.x.ai/v1/chat/completions";
+    const model = isGroq
+      ? process.env.XAI_MODEL || "llama-3.3-70b-versatile"
+      : process.env.XAI_MODEL || "grok-3-mini";
 
     const messages = [
       {
@@ -107,7 +114,7 @@ Current user context:
       { role: "user" as const, content: message },
     ];
 
-    const grokResponse = await fetch("https://api.x.ai/v1/chat/completions", {
+    const aiResponse = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -122,11 +129,11 @@ Current user context:
       signal: AbortSignal.timeout(15000), // 15s timeout
     });
 
-    if (!grokResponse.ok) {
-      const errorText = await grokResponse.text();
-      console.error("Grok API error:", grokResponse.status, errorText);
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error("AI API error:", aiResponse.status, errorText);
 
-      if (grokResponse.status === 429) {
+      if (aiResponse.status === 429) {
         return NextResponse.json(
           { error: "The AI assistant is temporarily busy. Please try again in a moment." },
           { status: 429 }
@@ -139,7 +146,7 @@ Current user context:
       );
     }
 
-    const data = await grokResponse.json();
+    const data = await aiResponse.json();
     const responseText = data.choices?.[0]?.message?.content;
 
     if (!responseText) {
@@ -162,7 +169,7 @@ Current user context:
     );
 
     if (hasSensitiveContent) {
-      console.warn("Grok response contained sensitive patterns — blocked");
+      console.warn("AI response contained sensitive patterns — blocked");
       return NextResponse.json({
         response:
           "I can't provide that information. Please contact your HR team directly.",
