@@ -128,6 +128,10 @@ async function main() {
   ];
 
   const empPasswordHash = await bcrypt.hash("Employee@123456", 12);
+  const allEmployees = [];
+
+  if (admin.employee) allEmployees.push(admin.employee);
+  if (hr.employee) allEmployees.push(hr.employee);
 
   for (const emp of empData) {
     const user = await prisma.user.upsert({
@@ -154,6 +158,8 @@ async function main() {
     });
 
     if (user.employee) {
+      allEmployees.push(user.employee);
+
       await prisma.salaryStructure.upsert({
         where: { employeeId: user.employee.id },
         update: {},
@@ -162,6 +168,12 @@ async function main() {
           baseSalary: emp.baseSalary,
           allowances: emp.baseSalary * 0.1,
           deductions: emp.baseSalary * 0.05,
+          monthlyWage: Math.round(emp.baseSalary / 12),
+          yearlyWage: emp.baseSalary,
+          basicSalary: Math.round(emp.baseSalary / 24),
+          hra: Math.round(emp.baseSalary / 48),
+          fixedAllowance: Math.round(emp.baseSalary / 48),
+          pfEmployee: Math.round(emp.baseSalary / 200),
           currency: "USD",
           effectiveFrom: new Date("2022-01-01"),
         },
@@ -170,6 +182,85 @@ async function main() {
 
     console.log("✅ Employee seeded:", emp.email);
   }
+
+  // ─── Seed 30 Days of Attendance & Overtime Records (Batched) ────────────────
+  console.log("\n⏰ Seeding 30 days of attendance & overtime records (batched)...");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const attendanceBatch: {
+    employeeId: string;
+    date: Date;
+    checkIn: Date | null;
+    checkOut: Date | null;
+    status: "PRESENT" | "ABSENT" | "HALF_DAY" | "LEAVE";
+    notes: string;
+  }[] = [];
+
+  for (const emp of allEmployees) {
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+
+      // Skip weekends (Saturday=6, Sunday=0)
+      if (d.getDay() === 0 || d.getDay() === 6) continue;
+
+      const dateObj = new Date(d);
+
+      let checkIn: Date | null = null;
+      let checkOut: Date | null = null;
+      let status: "PRESENT" | "ABSENT" | "HALF_DAY" | "LEAVE" = "PRESENT";
+      let notes = "Regular workday";
+
+      if (i === 0) {
+        // Today: Checked in at 8:45 AM
+        checkIn = new Date(d);
+        checkIn.setHours(8, 45, 0, 0);
+        checkOut = null;
+        notes = "Checked in for today";
+      } else if (i % 4 === 0) {
+        // Overtime Day! 08:30 AM to 19:30 PM (7:30 PM) -> 11h total (+3h Overtime)
+        checkIn = new Date(d);
+        checkIn.setHours(8, 30, 0, 0);
+        checkOut = new Date(d);
+        checkOut.setHours(19, 30, 0, 0);
+        notes = "Project release overtime (+3.0 hrs extra)";
+      } else if (i % 9 === 0) {
+        // Half Day: 09:00 AM to 13:00 PM
+        checkIn = new Date(d);
+        checkIn.setHours(9, 0, 0, 0);
+        checkOut = new Date(d);
+        checkOut.setHours(13, 0, 0, 0);
+        status = "HALF_DAY";
+        notes = "Half day (Personal appointment)";
+      } else {
+        // Standard Day: 09:00 AM to 17:45 PM -> 8h 45m (+45m Overtime)
+        checkIn = new Date(d);
+        checkIn.setHours(9, 0, 0, 0);
+        checkOut = new Date(d);
+        checkOut.setHours(17, 45, 0, 0);
+        notes = "Standard shift completed";
+      }
+
+      attendanceBatch.push({
+        employeeId: emp.id,
+        date: dateObj,
+        checkIn,
+        checkOut,
+        status,
+        notes,
+      });
+    }
+  }
+
+  // Clear previous attendance & insert in single query
+  await prisma.attendance.deleteMany({});
+  await prisma.attendance.createMany({
+    data: attendanceBatch,
+    skipDuplicates: true,
+  });
+
+  console.log("✅ 30 Days of Attendance & Overtime records populated!");
 
   console.log("\n🎉 Seeding complete on Neon PostgreSQL!");
   console.log("\n📋 Demo credentials:");
