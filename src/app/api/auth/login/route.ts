@@ -2,27 +2,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { loginSchema } from "@/lib/validations";
 import { createSession } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-
-// Retry on Neon cold-start connection errors
-async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      return await fn();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "";
-      const isConnErr = msg.includes("timeout") || msg.includes("Connection terminated") || msg.includes("ECONNRESET");
-      if (i < retries && isConnErr) {
-        await new Promise((r) => setTimeout(r, 300 * (i + 1)));
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("Retry limit exceeded");
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = result.data;
 
-    const user = await withRetry(() =>
+    const user = await withDbRetry(() =>
       db.user.findUnique({
         where: { email },
         include: { employee: { select: { id: true } } },
@@ -72,13 +55,14 @@ export async function POST(req: NextRequest) {
 
     const sessionToken = await createSession(user.id);
 
-    await logAudit({
+    // Run audit logging asynchronously in background so response returns instantly
+    logAudit({
       userId: user.id,
       action: "LOGIN",
       entity: "User",
       entityId: user.id,
       ipAddress: req.headers.get("x-forwarded-for") ?? undefined,
-    });
+    }).catch((e) => console.error("Audit log error:", e));
 
     const response = NextResponse.json({
       success: true,

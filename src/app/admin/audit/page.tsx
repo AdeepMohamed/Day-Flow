@@ -1,11 +1,13 @@
 // src/app/admin/audit/page.tsx
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { redirect } from "next/navigation";
 import { Topbar } from "@/components/layout/topbar";
 import { AdminAuditClient } from "./client";
 
 export const metadata = { title: "Audit Trail — Admin" };
+export const dynamic = "force-dynamic";
 
 export default async function AdminAuditPage() {
   const session = await getSession();
@@ -13,20 +15,22 @@ export default async function AdminAuditPage() {
     redirect("/auth/login");
   }
 
-  const auditLogs = await db.auditLog.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: {
-      user: {
-        select: {
-          email: true,
-          employeeId: true,
-          role: true,
-          employee: { select: { firstName: true, lastName: true } },
+  const auditLogs = await withDbRetry(() =>
+    db.auditLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        user: {
+          select: {
+            email: true,
+            employeeId: true,
+            role: true,
+            employee: { select: { firstName: true, lastName: true } },
+          },
         },
       },
-    },
-  });
+    })
+  );
 
   return (
     <div>

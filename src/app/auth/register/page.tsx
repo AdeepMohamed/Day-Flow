@@ -43,9 +43,8 @@ export default function RegisterPage() {
       }
 
       setSuccess(data.message);
-      if (!data.requiresVerification) {
-        setTimeout(() => router.push("/auth/login"), 2000);
-      }
+      const targetPath = data.user?.role === "ADMIN" || data.user?.role === "HR" ? "/admin/dashboard" : "/employee/dashboard";
+      setTimeout(() => router.push(targetPath), 1000);
     } catch {
       setError("Network error. Please try again.");
     } finally {

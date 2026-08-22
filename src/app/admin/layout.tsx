@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AIChat } from "@/components/ai/ai-chat";
 
@@ -20,28 +21,43 @@ export default async function AdminLayout({
     redirect("/employee/dashboard");
   }
 
-  const unreadCount = await db.notification.count({
-    where: { receiverId: session.id, isRead: false },
-  });
+  let unreadCount = 0;
+  let employeeName: string | undefined = session.email.split("@")[0];
+  let employeeAvatar: string | null = null;
 
-  const employee = session.employeeProfileId
-    ? await db.employee.findUnique({
-        where: { id: session.employeeProfileId },
-        select: { firstName: true, lastName: true, profilePicture: true },
-      })
-    : null;
+  try {
+    const [count, emp] = await withDbRetry(() =>
+      Promise.all([
+        db.notification.count({
+          where: { receiverId: session.id, isRead: false },
+        }),
+        session.employeeProfileId
+          ? db.employee.findUnique({
+              where: { id: session.employeeProfileId },
+              select: { firstName: true, lastName: true, profilePicture: true },
+            })
+          : Promise.resolve(null),
+      ])
+    );
+
+    unreadCount = count;
+    if (emp) {
+      employeeName = `${emp.firstName} ${emp.lastName}`;
+      employeeAvatar = emp.profilePicture;
+    }
+  } catch (e) {
+    console.error("[AdminLayout] Non-fatal layout DB error, using fallbacks:", e);
+  }
 
   return (
     <div className="main-layout">
       <Sidebar
         role={session.role as "ADMIN" | "HR"}
         unreadNotifs={unreadCount}
-        employeeName={employee ? `${employee.firstName} ${employee.lastName}` : undefined}
-        employeeAvatar={employee?.profilePicture ?? null}
+        employeeName={employeeName}
+        employeeAvatar={employeeAvatar}
       />
-      <div className="page-content">
-        {children}
-      </div>
+      <div className="page-content">{children}</div>
       <AIChat />
     </div>
   );

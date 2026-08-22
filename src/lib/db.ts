@@ -1,5 +1,5 @@
 // src/lib/db.ts
-// Prisma v7 with self-healing connection pool for Neon serverless
+// Prisma v7 with optimized connection pool for Neon serverless
 
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -17,16 +17,15 @@ function createPool(): Pool {
 
   const pool = new Pool({
     connectionString,
-    max: 3,
-    min: 0,                          // Don't keep idle connections — Neon closes them anyway
-    idleTimeoutMillis: 10000,        // Release idle connections after 10s
-    connectionTimeoutMillis: 20000,  // 20s — enough for Neon cold-start
-    keepAlive: false,                // Disable TCP keepalive — Neon drops them regardless
+    max: 20,                          // High connection limit to support Promise.all batching
+    min: 2,                          // Keep 2 connections warm
+    idleTimeoutMillis: 30000,        // Keep idle connections for 30s
+    connectionTimeoutMillis: 10000,  // 10s connection timeout
+    keepAlive: true,                 // Enable TCP keep-alive
   });
 
   pool.on("error", (err) => {
     console.error("[DB Pool] Client error, resetting pool:", err.message);
-    // On any pool error, clear cached instances so they get recreated fresh
     try { pool.end().catch(() => {}); } catch (_) {}
     g.pool = undefined;
     g.prisma = undefined;
@@ -36,7 +35,6 @@ function createPool(): Pool {
 }
 
 function getDb(): PrismaClient {
-  // Always return cached client if healthy
   if (g.prisma && g.pool) return g.prisma;
 
   const pool = createPool();
@@ -45,14 +43,13 @@ function getDb(): PrismaClient {
   const adapter = new PrismaPg(pool);
   const client = new PrismaClient({
     adapter,
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    log: process.env.NODE_ENV === "development" ? ["error"] : ["error"],
   });
 
   g.prisma = client;
   return client;
 }
 
-// Proxy that auto-recreates the client if the pool was reset
 export const db = new Proxy({} as PrismaClient, {
   get(_target, prop) {
     const client = getDb();

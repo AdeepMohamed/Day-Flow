@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrHR } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,41 +30,43 @@ export async function GET(req: NextRequest) {
       where.department = { equals: department, mode: "insensitive" };
     }
 
-    const [employees, total] = await Promise.all([
-      db.employee.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              employeeId: true,
-              role: true,
-              emailVerified: true,
-              createdAt: true,
+    const [employees, total] = await withDbRetry(() =>
+      Promise.all([
+        db.employee.findMany({
+          where,
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                employeeId: true,
+                role: true,
+                emailVerified: true,
+                createdAt: true,
+              },
+            },
+            salary: true,
+            attendance: {
+              where: {
+                date: new Date(new Date().setHours(0, 0, 0, 0)),
+              },
+              select: { status: true, date: true },
+            },
+            leaveRequests: {
+              where: {
+                status: "APPROVED",
+              },
+              select: { startDate: true, endDate: true, status: true },
+              take: 5,
             },
           },
-          salary: true,
-          attendance: {
-            where: {
-              date: new Date(new Date().setHours(0, 0, 0, 0)),
-            },
-            select: { status: true, date: true },
-          },
-          leaveRequests: {
-            where: {
-              status: "APPROVED",
-            },
-            select: { startDate: true, endDate: true, status: true },
-            take: 5,
-          },
-        },
-        skip,
-        take: limit,
-        orderBy: { firstName: "asc" },
-      }),
-      db.employee.count({ where }),
-    ]);
+          skip,
+          take: limit,
+          orderBy: { firstName: "asc" },
+        }),
+        db.employee.count({ where }),
+      ])
+    );
 
     return NextResponse.json({
       employees,

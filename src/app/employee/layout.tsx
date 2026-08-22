@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AIChat } from "@/components/ai/ai-chat";
 
@@ -16,35 +17,47 @@ export default async function EmployeeLayout({
     redirect("/auth/login");
   }
 
-  // Admins/HR should use the admin layout
   if (session.role === "ADMIN" || session.role === "HR") {
     redirect("/admin/dashboard");
   }
 
-  // Get unread notification count
-  const unreadCount = await db.notification.count({
-    where: { receiverId: session.id, isRead: false },
-  });
+  let unreadCount = 0;
+  let employeeName: string | undefined = session.email.split("@")[0];
+  let employeeAvatar: string | null = null;
 
-  // Get employee name
-  const employee = session.employeeProfileId
-    ? await db.employee.findUnique({
-        where: { id: session.employeeProfileId },
-        select: { firstName: true, lastName: true, profilePicture: true },
-      })
-    : null;
+  try {
+    const [count, emp] = await withDbRetry(() =>
+      Promise.all([
+        db.notification.count({
+          where: { receiverId: session.id, isRead: false },
+        }),
+        session.employeeProfileId
+          ? db.employee.findUnique({
+              where: { id: session.employeeProfileId },
+              select: { firstName: true, lastName: true, profilePicture: true },
+            })
+          : Promise.resolve(null),
+      ])
+    );
+
+    unreadCount = count;
+    if (emp) {
+      employeeName = `${emp.firstName} ${emp.lastName}`;
+      employeeAvatar = emp.profilePicture;
+    }
+  } catch (e) {
+    console.error("[EmployeeLayout] Non-fatal layout DB error, using fallbacks:", e);
+  }
 
   return (
     <div className="main-layout">
       <Sidebar
         role="EMPLOYEE"
         unreadNotifs={unreadCount}
-        employeeName={employee ? `${employee.firstName} ${employee.lastName}` : undefined}
-        employeeAvatar={employee?.profilePicture ?? null}
+        employeeName={employeeName}
+        employeeAvatar={employeeAvatar}
       />
-      <div className="page-content">
-        {children}
-      </div>
+      <div className="page-content">{children}</div>
       <AIChat />
     </div>
   );
