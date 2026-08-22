@@ -1,7 +1,6 @@
 // src/lib/db.ts
-// Prisma v7 with persistent connection pool caching for zero-latency queries
+// Prisma v7 with Neon-optimized connection pool
 
-import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
@@ -22,15 +21,20 @@ function getOrCreatePool(): Pool {
 
   const pool = new Pool({
     connectionString,
-    max: 10, // maximum pool connections
-    idleTimeoutMillis: 30000, // keep idle connections open 30s
-    connectionTimeoutMillis: 5000,
+    max: 5,
+    min: 1,                          // keep at least 1 connection alive
+    idleTimeoutMillis: 60000,        // 60s — keep idle connections longer
+    connectionTimeoutMillis: 15000,  // 15s timeout — enough for Neon cold-start
+    keepAlive: true,                 // TCP keep-alive prevents silent drops
+    keepAliveInitialDelayMillis: 0,
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.pool = pool;
-  }
+  // Log pool errors silently — don't crash the app
+  pool.on("error", (err) => {
+    console.error("[DB Pool] Unexpected error:", err.message);
+  });
 
+  globalForPrisma.pool = pool;
   return pool;
 }
 
@@ -47,10 +51,7 @@ function createPrismaClient(): PrismaClient {
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = client;
-  }
-
+  globalForPrisma.prisma = client;
   return client;
 }
 

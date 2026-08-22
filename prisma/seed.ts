@@ -3,7 +3,29 @@ import "dotenv/config";
 import { db as prisma } from "../src/lib/db";
 import bcrypt from "bcryptjs";
 
+// Retry wrapper for Neon serverless cold-start connection timeouts
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 2000): Promise<T> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (i < retries - 1 && msg.includes("Connection terminated")) {
+        console.log(`⚠️  Connection timeout — retrying in ${delayMs}ms... (attempt ${i + 2}/${retries})`);
+        await new Promise(r => setTimeout(r, delayMs));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+
 async function main() {
+  // Warm up connection with a ping first
+  console.log("🔌 Warming up Neon DB connection...");
+  await withRetry(() => prisma.$queryRaw`SELECT 1`);
+  console.log("✅ Connected!");
   console.log("🌱 Seeding PeopleOS database on Neon PostgreSQL...");
 
   // Seed leave types
@@ -170,10 +192,10 @@ async function main() {
   const allEmployees: { id: string; name: string; pattern: typeof empData[0] }[] = [];
 
   if (admin.employee) {
-    allEmployees.push({ id: admin.employee.id, name: "admin", pattern: { absents: [12], halfDays: [7], leaves: [], ...empData[0] } });
+    allEmployees.push({ id: admin.employee.id, name: "admin", pattern: { employeeId: "EMP-ADMIN-001", email: "admin@peopleos.com", firstName: "Alex", lastName: "Admin", department: "Human Resources", position: "HR Director", baseSalary: 90000, startDate: "2020-01-01", absents: [12], halfDays: [7], leaves: [] } });
   }
   if (hr.employee) {
-    allEmployees.push({ id: hr.employee.id, name: "hr", pattern: { absents: [20], halfDays: [10], leaves: [25], ...empData[1] } });
+    allEmployees.push({ id: hr.employee.id, name: "hr", pattern: { employeeId: "EMP-HR-001", email: "hr@peopleos.com", firstName: "Sam", lastName: "HR", department: "Human Resources", position: "HR Officer", baseSalary: 70000, startDate: "2021-03-15", absents: [20], halfDays: [10], leaves: [25] } });
   }
 
   for (const emp of empData) {

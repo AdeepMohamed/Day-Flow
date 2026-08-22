@@ -7,6 +7,24 @@ import { EmployeeDashboardClient } from "./client";
 import { formatDate } from "@/lib/utils";
 
 export const metadata = { title: "My Dashboard" };
+export const dynamic = "force-dynamic";
+
+// Retry DB operations on Neon cold-start timeouts
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (i < retries && (msg.includes("timeout") || msg.includes("Connection terminated"))) {
+        await new Promise((r) => setTimeout(r, 5));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("DB retry limit exceeded");
+}
 
 export default async function EmployeeDashboardPage() {
   const session = await getSession();
@@ -19,7 +37,6 @@ export default async function EmployeeDashboardPage() {
   let empProfileId = session.employeeProfileId;
 
   if (!empProfileId) {
-    // Auto-create missing employee profile for standard users
     const newEmp = await db.employee.create({
       data: {
         userId: session.id,
@@ -39,38 +56,40 @@ export default async function EmployeeDashboardPage() {
   sevenDaysAgo.setDate(today.getDate() - 6);
 
   const [employee, todayAttendance, weekAttendance, recentLeaves, unreadNotifs] =
-    await Promise.all([
-      db.employee.findUnique({
-        where: { id: empProfileId },
-        include: { salary: true },
-      }),
-      db.attendance.findUnique({
-        where: {
-          employeeId_date: {
-            employeeId: empProfileId,
-            date: today,
+    await withDbRetry(() =>
+      Promise.all([
+        db.employee.findUnique({
+          where: { id: empProfileId! },
+          include: { salary: true },
+        }),
+        db.attendance.findUnique({
+          where: {
+            employeeId_date: {
+              employeeId: empProfileId!,
+              date: today,
+            },
           },
-        },
-      }),
-      db.attendance.findMany({
-        where: {
-          employeeId: empProfileId,
-          date: { gte: sevenDaysAgo, lte: today },
-        },
-        orderBy: { date: "asc" },
-      }),
-      db.leaveRequest.findMany({
-        where: { employeeId: empProfileId },
-        include: { leaveType: true },
-        orderBy: { createdAt: "desc" },
-        take: 3,
-      }),
-      db.notification.findMany({
-        where: { receiverId: session.id, isRead: false },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-      }),
-    ]);
+        }),
+        db.attendance.findMany({
+          where: {
+            employeeId: empProfileId!,
+            date: { gte: sevenDaysAgo, lte: today },
+          },
+          orderBy: { date: "asc" },
+        }),
+        db.leaveRequest.findMany({
+          where: { employeeId: empProfileId! },
+          include: { leaveType: true },
+          orderBy: { createdAt: "desc" },
+          take: 3,
+        }),
+        db.notification.findMany({
+          where: { receiverId: session.id, isRead: false },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        }),
+      ])
+    );
 
   const weekStats = {
     present: weekAttendance.filter((a) => a.status === "PRESENT").length,
