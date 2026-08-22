@@ -99,7 +99,7 @@ Current user context:
       ? "https://api.groq.com/openai/v1/chat/completions"
       : "https://api.x.ai/v1/chat/completions";
     const model = isGroq
-      ? process.env.XAI_MODEL || "llama-3.3-70b-versatile"
+      ? process.env.XAI_MODEL || "groq/compound-mini"
       : process.env.XAI_MODEL || "grok-3-mini";
 
     const messages = [
