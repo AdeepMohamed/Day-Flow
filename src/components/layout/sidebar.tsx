@@ -80,6 +80,7 @@ export function Sidebar({ role, unreadNotifs = 0, employeeName, employeeAvatar }
             key={item.href}
             href={item.href}
             prefetch={true}
+            onMouseEnter={() => router.prefetch(item.href)}
             className={`sidebar-item ${isActive(item.href) ? "active" : ""}`}
             onClick={() => setMobileOpen(false)}
           >
@@ -97,6 +98,11 @@ export function Sidebar({ role, unreadNotifs = 0, employeeName, employeeAvatar }
         <Link
           href={role === "EMPLOYEE" ? "/employee/notifications" : "/admin/notifications"}
           prefetch={true}
+          onMouseEnter={() =>
+            router.prefetch(
+              role === "EMPLOYEE" ? "/employee/notifications" : "/admin/notifications"
+            )
+          }
           className={`sidebar-item ${
             isActive(`/${role === "EMPLOYEE" ? "employee" : "admin"}/notifications`)
               ? "active"
