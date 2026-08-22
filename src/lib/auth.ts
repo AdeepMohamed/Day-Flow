@@ -1,9 +1,11 @@
 // src/lib/auth.ts
-// Session management utilities
+// Fast, Zero-Database-Latency Session Management (HMAC Signed Tokens)
 
 import { cookies } from "next/headers";
+import { cache } from "react";
+import crypto from "crypto";
 import { db } from "./db";
-import { User, Role } from "@prisma/client";
+import { Role } from "@prisma/client";
 
 export type SessionUser = {
   id: string;
@@ -14,52 +16,113 @@ export type SessionUser = {
   employeeProfileId: string | null;
 };
 
+type SessionTokenPayload = SessionUser & {
+  exp: number;
+};
+
+const AUTH_SECRET =
+  process.env.AUTH_SECRET || "peopleos-super-secret-key-32-chars-min-hackathon";
+
+/**
+ * Fast HMAC SHA-256 token signing
+ */
+function signToken(payload: SessionTokenPayload): string {
+  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", AUTH_SECRET)
+    .update(data)
+    .digest("base64url");
+  return `${data}.${signature}`;
+}
+
+/**
+ * Fast HMAC SHA-256 token verification (0ms database calls)
+ */
+function verifyToken(token: string): SessionUser | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 2) return null;
+
+    const [data, signature] = parts;
+    const expectedSignature = crypto
+      .createHmac("sha256", AUTH_SECRET)
+      .update(data)
+      .digest("base64url");
+
+    if (
+      signature.length !== expectedSignature.length ||
+      !crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expectedSignature)
+      )
+    ) {
+      return null;
+    }
+
+    const payload = JSON.parse(
+      Buffer.from(data, "base64url").toString("utf-8")
+    ) as SessionTokenPayload;
+
+    if (payload.exp && payload.exp < Date.now()) {
+      return null;
+    }
+
+    return {
+      id: payload.id,
+      employeeId: payload.employeeId,
+      email: payload.email,
+      role: payload.role,
+      emailVerified: payload.emailVerified,
+      employeeProfileId: payload.employeeProfileId,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get the currently authenticated user from the session cookie.
- * Returns null if not authenticated or session expired.
+ * Wrapped in React cache() to run max ONCE per request with 0ms DB latency.
  */
-export async function getSession(): Promise<SessionUser | null> {
+export const getSession = cache(async (): Promise<SessionUser | null> => {
   try {
     const cookieStore = await cookies();
     const sessionToken = cookieStore.get("peopleos_session")?.value;
 
     if (!sessionToken) return null;
 
-    const session = await db.session.findUnique({
+    // Fast path: verify HMAC token (0ms)
+    const session = verifyToken(sessionToken);
+    if (session) return session;
+
+    // Fallback: check database for legacy sessions
+    const dbSession = await db.session.findUnique({
       where: { token: sessionToken },
       include: {
         user: {
           include: {
-            employee: {
-              select: { id: true },
-            },
+            employee: { select: { id: true } },
           },
         },
       },
     });
 
-    if (!session || session.expiresAt < new Date()) {
-      // Clean up expired session
-      if (session) {
-        await db.session.delete({ where: { id: session.id } }).catch(() => {});
-      }
+    if (!dbSession || dbSession.expiresAt < new Date()) {
       return null;
     }
 
-    const { user } = session;
-
     return {
-      id: user.id,
-      employeeId: user.employeeId,
-      email: user.email,
-      role: user.role,
-      emailVerified: user.emailVerified,
-      employeeProfileId: user.employee?.id ?? null,
+      id: dbSession.user.id,
+      employeeId: dbSession.user.employeeId,
+      email: dbSession.user.email,
+      role: dbSession.user.role,
+      emailVerified: dbSession.user.emailVerified,
+      employeeProfileId: dbSession.user.employee?.id ?? null,
     };
   } catch {
     return null;
   }
-}
+});
 
 /**
  * Require authentication — throws redirect if not logged in.
@@ -96,28 +159,40 @@ export async function requireAdminOrHR(): Promise<SessionUser> {
 }
 
 /**
- * Generate a secure session token.
- */
-export function generateSessionToken(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return Buffer.from(array).toString("hex");
-}
-
-/**
- * Create a session for a user.
+ * Create a session for a user and return signed HMAC token.
  */
 export async function createSession(userId: string): Promise<string> {
-  const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-  await db.session.create({
-    data: {
-      userId,
-      token,
-      expiresAt,
-    },
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    include: { employee: { select: { id: true } } },
   });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const payload: SessionTokenPayload = {
+    id: user.id,
+    employeeId: user.employeeId,
+    email: user.email,
+    role: user.role,
+    emailVerified: user.emailVerified,
+    employeeProfileId: user.employee?.id ?? null,
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
+
+  const token = signToken(payload);
+
+  // Also persist in DB as fallback
+  await db.session
+    .create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt: new Date(payload.exp),
+      },
+    })
+    .catch(() => {});
 
   return token;
 }
