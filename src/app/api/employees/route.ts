@@ -44,6 +44,19 @@ export async function GET(req: NextRequest) {
             },
           },
           salary: true,
+          attendance: {
+            where: {
+              date: new Date(new Date().setHours(0, 0, 0, 0)),
+            },
+            select: { status: true, date: true },
+          },
+          leaveRequests: {
+            where: {
+              status: "APPROVED",
+            },
+            select: { startDate: true, endDate: true, status: true },
+            take: 5,
+          },
         },
         skip,
         take: limit,
