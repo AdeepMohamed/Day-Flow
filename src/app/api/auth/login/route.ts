@@ -21,10 +21,19 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = result.data;
 
+    // Check if DB URL is configured
+    if (!process.env.DATABASE_URL) {
+      console.error("[Login] DATABASE_URL is missing in environment variables!");
+      return NextResponse.json(
+        { error: "Server configuration error: DATABASE_URL is missing in Vercel Environment Variables." },
+        { status: 500 }
+      );
+    }
+
     // Single DB lookup (with retry for Neon cold-starts)
     const user = await withDbRetry(() =>
       db.user.findUnique({
-        where: { email },
+        where: { email: email.toLowerCase().trim() },
         include: { employee: { select: { id: true } } },
       })
     );
@@ -54,7 +63,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 0ms HMAC Token Generation (no database write/lookup latency!)
+    // 0ms HMAC Token Generation
     const sessionToken = createSessionToken({
       id: user.id,
       employeeId: user.employeeId,
@@ -93,10 +102,11 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch (error) {
-    console.error("Login error:", error);
+  } catch (error: unknown) {
+    const errMessage = error instanceof Error ? error.message : String(error);
+    console.error("Login error details:", errMessage, error);
     return NextResponse.json(
-      { error: "Sign in failed. Please try again." },
+      { error: `Sign in failed: ${errMessage}` },
       { status: 500 }
     );
   }
