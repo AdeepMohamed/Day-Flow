@@ -53,8 +53,8 @@ export async function PATCH(
       );
     }
 
-    // Prevent HR from approving their own leave
-    if (leaveRequest.employee.user.id === session.id) {
+    // Prevent standard HR from approving their own leave (Admins can approve any leave)
+    if (leaveRequest.employee.user.id === session.id && session.role !== "ADMIN") {
       return NextResponse.json(
         { error: "You cannot approve or reject your own leave request" },
         { status: 403 }

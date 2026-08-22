@@ -41,9 +41,9 @@ export function Topbar({ title, subtitle }: TopbarProps) {
       <div style={{ flex: 1 }} />
 
       {/* Date/time */}
-      <div className="topbar-datetime">
-        <span className="topbar-time">{timeStr}</span>
-        <span className="topbar-date">{dateStr}</span>
+      <div className="topbar-datetime" suppressHydrationWarning>
+        <span className="topbar-time" suppressHydrationWarning>{timeStr}</span>
+        <span className="topbar-date" suppressHydrationWarning>{dateStr}</span>
       </div>
 
       {/* Theme toggle */}
