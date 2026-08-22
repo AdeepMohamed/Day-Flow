@@ -1,5 +1,5 @@
-// src/middleware.ts
-// Route protection middleware — server-enforced RBAC
+// src/proxy.ts
+// Route protection proxy — Next.js 16 server-enforced RBAC
 
 import { NextRequest, NextResponse } from "next/server";
 
@@ -12,10 +12,7 @@ const PUBLIC_ROUTES = [
   "/api/auth/verify",
 ];
 
-const ADMIN_ROUTES = ["/admin"];
-const EMPLOYEE_ROUTES = ["/employee"];
-
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public routes
