@@ -1,10 +1,10 @@
-import { PrismaClient } from "@prisma/client";
+// prisma/seed.ts
+import "dotenv/config";
+import { db as prisma } from "../src/lib/db";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
-
 async function main() {
-  console.log("🌱 Seeding PeopleOS database...");
+  console.log("🌱 Seeding PeopleOS database on Neon PostgreSQL...");
 
   // Seed leave types
   const leaveTypes = await Promise.all([
@@ -171,7 +171,7 @@ async function main() {
     console.log("✅ Employee seeded:", emp.email);
   }
 
-  console.log("\n🎉 Seeding complete!");
+  console.log("\n🎉 Seeding complete on Neon PostgreSQL!");
   console.log("\n📋 Demo credentials:");
   console.log("  Admin:    admin@peopleos.com  / Admin@123456");
   console.log("  HR:       hr@peopleos.com     / Hr@123456");
