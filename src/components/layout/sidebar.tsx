@@ -79,6 +79,7 @@ export function Sidebar({ role, unreadNotifs = 0, employeeName, employeeAvatar }
           <Link
             key={item.href}
             href={item.href}
+            prefetch={true}
             className={`sidebar-item ${isActive(item.href) ? "active" : ""}`}
             onClick={() => setMobileOpen(false)}
           >
@@ -95,6 +96,7 @@ export function Sidebar({ role, unreadNotifs = 0, employeeName, employeeAvatar }
         {/* Notifications */}
         <Link
           href={role === "EMPLOYEE" ? "/employee/notifications" : "/admin/notifications"}
+          prefetch={true}
           className={`sidebar-item ${
             isActive(`/${role === "EMPLOYEE" ? "employee" : "admin"}/notifications`)
               ? "active"
